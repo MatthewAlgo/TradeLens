@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    environment:
+      NODE_ENV: development
+  backtester:
+    environment:
+      LOG_LEVEL: debug
+  mock-exchange:
+    environment:
+      REPLAY_SPEED: 25
+  web:
+    environment:
+      VITE_API_URL: http://localhost:4000/api
+      VITE_WS_URL: ws://localhost:4000/ws

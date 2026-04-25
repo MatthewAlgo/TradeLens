@@ -1,0 +1,271 @@
+version: '3.8'
+
+networks:
+  tradelens-net:
+    driver: bridge
+
+volumes:
+  redpanda-data:
+  tsdata:
+  pgdata:
+  redis-data:
+
+services:
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+
+  # Redpanda — Kafka-compatible message broker (C++, zero JVM)
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: tradelens-redpanda
+    command:
+      - redpanda start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 200M
+      - --node-id 0
+      - --check=false
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+    ports:
+      - "19092:19092"
+      - "18082:18082"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    networks:
+      - tradelens-net
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redpanda Console — Web UI for topic monitoring
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: tradelens-console
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - tradelens-net
+
+  # TimescaleDB — Time-series database for market data
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: tradelens-timescaledb
+    environment:
+      POSTGRES_USER: ${TIMESCALE_USER:-tradelens}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-tradelens_secret}
+      POSTGRES_DB: ${TIMESCALE_DB:-market_data}
+    ports:
+      - "5432:5432"
+    volumes:
+      - tsdata:/var/lib/postgresql/data
+    networks:
+      - tradelens-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradelens -d market_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL — User & order state
+  postgres:
+    image: postgres:16-alpine
+    container_name: tradelens-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tradelens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradelens_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-tradelens}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - tradelens-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradelens -d tradelens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis — In-memory cache for order book & sessions
+  redis:
+    image: redis:7-alpine
+    container_name: tradelens-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - tradelens-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # APPLICATION SERVICES
+  # ============================================
+
+  # Mock Exchange — Replays historical tick data via WebSocket
+  mock-exchange:
+    build:
+      context: .
+      dockerfile: services/mock-exchange/Dockerfile
+    container_name: tradelens-mock-exchange
+    ports:
+      - "8765:8765"
+    environment:
+      REPLAY_SPEED: ${MOCK_REPLAY_SPEED:-10}
+    labels:
+      - "namespace=tradelens-app"
+    networks:
+      - tradelens-net
+
+  # Market Data Ingester — WS → Redpanda
+  market-data-ingester:
+    build:
+      context: .
+      dockerfile: services/market-data-ingester/Dockerfile
+    container_name: tradelens-ingester
+    environment:
+      EXCHANGE_MODE: ${EXCHANGE_MODE:-mock}
+      MOCK_EXCHANGE_URL: ws://mock-exchange:8765
+      BINANCE_WS_URL: ${BINANCE_WS_URL:-wss://stream.binance.com:9443/ws}
+      REDPANDA_BROKERS: redpanda:9092
+      SYMBOLS: BTCUSDT,ETHUSDT
+    labels:
+      - "namespace=tradelens-app"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      mock-exchange:
+        condition: service_started
+    networks:
+      - tradelens-net
+
+  # Aggregator — Raw ticks → OHLCV + Footprint candles
+  aggregator:
+    build:
+      context: .
+      dockerfile: services/aggregator/Dockerfile
+    container_name: tradelens-aggregator
+    environment:
+      REDPANDA_BROKERS: redpanda:9092
+      TIMESCALE_DSN: postgres://tradelens:tradelens_secret@timescaledb:5432/market_data?sslmode=disable
+      INTERVALS: 1m,5m,15m,1h
+      TICK_GROUPING: 1000
+    labels:
+      - "namespace=tradelens-app"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - tradelens-net
+
+  # OMS — Order Management System
+  oms:
+    build:
+      context: .
+      dockerfile: services/oms/Dockerfile
+    container_name: tradelens-oms
+    environment:
+      REDPANDA_BROKERS: redpanda:9092
+      POSTGRES_DSN: postgres://tradelens:tradelens_secret@postgres:5432/tradelens?sslmode=disable
+      REDIS_ADDR: redis:6379
+      INITIAL_BALANCE: "100000.00"
+    labels:
+      - "namespace=tradelens-app"
+    ports:
+      - "4001:4001"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradelens-net
+
+  # Backtester — Python/FastAPI backtesting engine
+  backtester:
+    build:
+      context: .
+      dockerfile: services/backtester/Dockerfile
+    container_name: tradelens-backtester
+    environment:
+      TIMESCALE_DSN: postgres://tradelens:tradelens_secret@timescaledb:5432/market_data?sslmode=disable
+    labels:
+      - "namespace=tradelens-app"
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - tradelens-net
+
+  # API Gateway — REST + WebSocket multiplexer
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: tradelens-gateway
+    environment:
+      PORT: 4000
+      REDPANDA_BROKERS: redpanda:9092
+      TIMESCALE_DSN: postgres://tradelens:tradelens_secret@timescaledb:5432/market_data?sslmode=disable
+      POSTGRES_DSN: postgres://tradelens:tradelens_secret@postgres:5432/tradelens?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      OMS_URL: http://oms:4001
+      BACKTESTER_URL: http://backtester:8000
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+    labels:
+      - "namespace=tradelens-app"
+    ports:
+      - "4000:4000"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradelens-net
+
+  # Frontend — React trading dashboard
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_WS_URL: ws://localhost:4000/ws
+        VITE_API_URL: http://localhost:4000/api
+    container_name: tradelens-web
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_WS_URL: ws://localhost:4000/ws
+      VITE_API_URL: http://localhost:4000/api
+    labels:
+      - "namespace=tradelens-app"
+    depends_on:
+      - api-gateway
+    networks:
+      - tradelens-net

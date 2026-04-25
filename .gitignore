@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+vendor/
+
+# Build artifacts
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
+tsdata/
+redpanda-data/
+redis-data/
+
+# Go
+*.test
+*.out
+coverage.html
+
+# Python
+*.egg-info/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Generated Protobuf
+proto/gen/
+
+# Logs
+*.log
+logs/

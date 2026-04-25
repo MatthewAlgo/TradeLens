@@ -1,0 +1,33 @@
+{
+  "name": "tradelens-api-gateway",
+  "version": "1.0.0",
+  "description": "TradeLens API Gateway — REST + WebSocket multiplexer",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.0",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.13.0",
+    "redis": "^4.7.0",
+    "jsonwebtoken": "^9.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.0",
+    "@types/pg": "^8.11.0",
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/cors": "^2.8.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}

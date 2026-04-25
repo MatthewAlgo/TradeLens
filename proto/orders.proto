@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package tradelens;
+
+option go_package = "github.com/MatthewAlgo/TradeLens/proto/gen/go/tradelens";
+
+// ============================================
+// Order & Trading Messages
+// ============================================
+
+enum OrderSide {
+    SIDE_UNKNOWN = 0;
+    BUY  = 1;
+    SELL = 2;
+}
+
+enum OrderType {
+    TYPE_UNKNOWN  = 0;
+    MARKET        = 1;
+    LIMIT         = 2;
+    STOP_LOSS     = 3;
+    TAKE_PROFIT   = 4;
+}
+
+enum OrderStatus {
+    STATUS_UNKNOWN = 0;
+    PENDING        = 1;
+    OPEN           = 2;
+    PARTIAL        = 3;
+    FILLED         = 4;
+    CANCELLED      = 5;
+    REJECTED       = 6;
+}
+
+// Order submission request
+message OrderRequest {
+    string user_id        = 1;
+    uint32 instrument_id  = 2;
+    string symbol         = 3;
+    OrderSide side        = 4;
+    OrderType order_type  = 5;
+    int64  quantity       = 6;  // Scaled
+    int64  price          = 7;  // Scaled, 0 for MARKET
+    int64  stop_price     = 8;  // For STOP_LOSS / TAKE_PROFIT
+    int32  scale_factor   = 9;
+}
+
+// Order state after processing
+message Order {
+    string id             = 1;  // UUID
+    string user_id        = 2;
+    uint32 instrument_id  = 3;
+    string symbol         = 4;
+    OrderSide side        = 5;
+    OrderType order_type  = 6;
+    OrderStatus status    = 7;
+    int64  quantity       = 8;
+    int64  filled_quantity = 9;
+    int64  price          = 10;
+    int64  stop_price     = 11;
+    int64  avg_fill_price = 12;
+    int64  commission     = 13;
+    int32  scale_factor   = 14;
+    int64  created_at_ns  = 15;
+    int64  updated_at_ns  = 16;
+}
+
+// Trade fill event
+message Fill {
+    string id        = 1;
+    string order_id  = 2;
+    int64  price     = 3;
+    int64  quantity  = 4;
+    int64  commission = 5;
+    int32  scale_factor = 6;
+    int64  filled_at_ns = 7;
+}
+
+// Position state
+message Position {
+    string id             = 1;
+    string user_id        = 2;
+    uint32 instrument_id  = 3;
+    string symbol         = 4;
+    string side           = 5;  // "LONG" or "SHORT"
+    int64  quantity        = 6;
+    int64  avg_entry_price = 7;
+    int64  unrealized_pnl  = 8;
+    int64  realized_pnl    = 9;
+    int32  scale_factor    = 10;
+}
+
+// Portfolio summary
+message Portfolio {
+    string user_id        = 1;
+    int64  balance        = 2;  // Available balance (scaled)
+    int64  locked_balance = 3;  // In open orders
+    int64  total_pnl      = 4;
+    int32  scale_factor   = 5;
+    repeated Position positions = 6;
+}
+
+// Order event (published to message broker)
+message OrderEvent {
+    string event_type = 1;  // "created", "filled", "cancelled", "rejected"
+    Order  order      = 2;
+    Fill   fill       = 3;  // Present only for "filled" events
+    int64  timestamp_ns = 4;
+}

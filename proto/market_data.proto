@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package tradelens;
+
+option go_package = "github.com/MatthewAlgo/TradeLens/proto/gen/go/tradelens";
+
+// ============================================
+// Market Data Messages
+// ============================================
+
+// Single trade tick from an exchange
+message Tick {
+    int64  timestamp_ns   = 1;  // Nanosecond Unix epoch
+    uint32 instrument_id  = 2;  // Internal instrument ID
+    string symbol         = 3;  // Human-readable: "BTCUSDT"
+    int64  price_scaled   = 4;  // Price × 10^scale_factor
+    int32  scale_factor   = 5;  // Decimal precision (e.g., 2 = cents)
+    int64  quantity_scaled = 6; // Quantity × 10^qty_scale
+    int32  qty_scale      = 7;
+    bool   is_buyer_maker = 8;  // true = trade at bid (aggressive sell)
+    string exchange       = 9;  // Source exchange
+    int64  trade_id       = 10; // Exchange trade ID
+}
+
+// Batch of ticks for efficient transport
+message TickBatch {
+    repeated Tick ticks = 1;
+}
+
+// OHLCV candlestick bar
+message OHLCV {
+    int64  timestamp_ns   = 1;
+    uint32 instrument_id  = 2;
+    string symbol         = 3;
+    string interval       = 4;  // "1m", "5m", "15m", "1h", "4h", "1d"
+    int64  open           = 5;  // All prices scaled
+    int64  high           = 6;
+    int64  low            = 7;
+    int64  close          = 8;
+    int64  volume         = 9;
+    int32  scale_factor   = 10;
+    int32  trade_count    = 11;
+    bool   is_closed      = 12; // true = candle finalized
+}
+
+// Single price level in a footprint chart
+message FootprintLevel {
+    int64 price_level  = 1;  // Scaled price at this level
+    int64 bid_volume   = 2;  // Volume from aggressive sells
+    int64 ask_volume   = 3;  // Volume from aggressive buys
+    int64 delta        = 4;  // ask_volume - bid_volume
+}
+
+// Complete footprint candle with all price levels
+message FootprintCandle {
+    int64  timestamp_ns   = 1;
+    uint32 instrument_id  = 2;
+    string symbol         = 3;
+    string interval       = 4;
+    int64  open           = 5;
+    int64  high           = 6;
+    int64  low            = 7;
+    int64  close          = 8;
+    int32  scale_factor   = 9;
+    int32  tick_grouping  = 10; // Price aggregation in scaled units
+    repeated FootprintLevel levels = 11;
+    bool   is_closed      = 12;
+}
+
+// Order book level (bid or ask)
+message OrderBookLevel {
+    int64 price    = 1;  // Scaled price
+    int64 quantity = 2;  // Scaled quantity
+}
+
+// Full order book snapshot
+message OrderBookSnapshot {
+    int64  timestamp_ns   = 1;
+    uint32 instrument_id  = 2;
+    string symbol         = 3;
+    repeated OrderBookLevel bids = 4;
+    repeated OrderBookLevel asks = 5;
+    int64  last_update_id = 6;
+}
