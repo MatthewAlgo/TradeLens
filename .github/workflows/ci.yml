@@ -1,0 +1,60 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Go, Node, Python, Web)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install Node Dependencies (API Gateway & Web)
+        run: |
+          cd services/api-gateway && npm install
+          cd ../../web && npm install
+
+      - name: Run all Unit Tests
+        run: make test
+
+  integration-tests:
+    name: E2E Integration Tests (Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start Infrastructure (Redpanda, Timescale, Postgres, Redis)
+        run: make infra-up
+
+      - name: Start TradeLens Application Services
+        run: make up
+
+      - name: Wait for services to stabilize
+        run: sleep 15
+
+      - name: Run E2E Data Pipeline Test
+        run: make test-pipeline
+
+      - name: Run E2E Backtest Test
+        run: make test-backtest
