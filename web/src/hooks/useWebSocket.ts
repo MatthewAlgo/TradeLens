@@ -24,7 +24,7 @@ export function useWebSocket() {
     ws.current.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (!msg.channel) return;
+        if (!msg.channel || !msg.data) return;
         
         if (msg.channel.startsWith('candles:')) {
           addCandle(msg.data);
