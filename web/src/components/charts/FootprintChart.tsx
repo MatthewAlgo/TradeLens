@@ -66,8 +66,9 @@ export const FootprintChart: React.FC = () => {
     
     visibleData.forEach(fp => {
       fp.levels.forEach(level => {
-        if (level.price_level < minPrice) minPrice = level.price_level;
-        if (level.price_level > maxPrice) maxPrice = level.price_level;
+        const price = parseFloat(level.price_level as any);
+        if (price < minPrice) minPrice = price;
+        if (price > maxPrice) maxPrice = price;
       });
     });
 
@@ -84,23 +85,22 @@ export const FootprintChart: React.FC = () => {
       const x = app.screen.width - ((lastVisibleCount - i) * candleWidth) + padding;
       
       // Calculate max volume for color intensity scaling
-      const maxVolInCandle = Math.max(...candle.levels.map(l => l.total_volume));
+      const maxVolInCandle = Math.max(...candle.levels.map(l => parseFloat(l.total_volume as any) || 0));
 
       candle.levels.forEach(level => {
-        const y = getPriceY(level.price_level);
+        const price = parseFloat(level.price_level as any);
+        const y = getPriceY(price);
         const cellHeight = scaleY * 10; // Assuming tick grouping is 10
         
-        // Heatmap colors based on delta
-        // Positive delta (more buying) -> Greenish/Blueish
-        // Negative delta (more selling) -> Reddish
+        const delta = parseFloat(level.delta as any) || 0;
         let color = 0x1e293b; // Default neutral cold
         
-        if (level.delta > 0) {
+        if (delta > 0) {
           // Intensity based on ratio to max volume
-          const intensity = Math.min(1, level.delta / (maxVolInCandle || 1));
+          const intensity = Math.min(1, delta / (maxVolInCandle || 1));
           color = PIXI.Color.shared.setValue([0.2, 0.5 + (0.5 * intensity), 0.9]).toNumber();
-        } else if (level.delta < 0) {
-          const intensity = Math.min(1, Math.abs(level.delta) / (maxVolInCandle || 1));
+        } else if (delta < 0) {
+          const intensity = Math.min(1, Math.abs(delta) / (maxVolInCandle || 1));
           color = PIXI.Color.shared.setValue([0.5 + (0.5 * intensity), 0.2, 0.2]).toNumber();
         }
 
@@ -118,8 +118,10 @@ export const FootprintChart: React.FC = () => {
           align: 'center',
         });
         
+        const bidVol = parseFloat(level.bid_volume as any) || 0;
+        const askVol = parseFloat(level.ask_volume as any) || 0;
         const text = new PIXI.Text({
-          text: `${level.bid_volume.toFixed(1)} x ${level.ask_volume.toFixed(1)}`, 
+          text: `${bidVol.toFixed(1)} x ${askVol.toFixed(1)}`, 
           style: textStyle
         });
         

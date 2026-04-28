@@ -35,6 +35,7 @@ export const useMarketStore = create<MarketState>((set) => ({
   
   setCandles: (candles) => set({ candles }),
   addCandle: (candle) => set((state) => {
+    if (!candle || !candle.time) return state;
     // If candle is update to last candle, replace it. Otherwise append.
     const newCandles = [...state.candles];
     if (newCandles.length > 0 && newCandles[newCandles.length - 1].time === candle.time) {
@@ -47,6 +48,7 @@ export const useMarketStore = create<MarketState>((set) => ({
 
   setFootprints: (footprints) => set({ footprints }),
   addFootprint: (footprint) => set((state) => {
+    if (!footprint || !footprint.time) return state;
     const newFp = [...state.footprints];
     if (newFp.length > 0 && newFp[newFp.length - 1].time === footprint.time) {
       newFp[newFp.length - 1] = footprint;
@@ -59,6 +61,7 @@ export const useMarketStore = create<MarketState>((set) => ({
   setOrderbook: (orderbook) => set({ orderbook }),
   
   addTick: (tick) => set((state) => {
+    if (!tick || tick.price === undefined) return state;
     const newTicks = [...state.recentTicks, tick].slice(-50); // keep last 50
     return { recentTicks: newTicks, currentPrice: tick.price };
   }),
