@@ -49,4 +49,24 @@ describe('marketStore', () => {
     expect(state.recentTicks).toHaveLength(50);
     expect(state.currentPrice).toBe(154);
   });
+
+  it('derives footprint metadata when view changes', () => {
+    useMarketStore.setState({ rawFootprints: [], footprints: [] });
+
+    const raw = [{
+      time: '2025-01-01T00:00:00.000Z',
+      levels: [
+        { price_level: 100, bid_volume: 1, ask_volume: 4, delta: 3, total_volume: 5 },
+        { price_level: 101, bid_volume: 6, ask_volume: 1, delta: -5, total_volume: 7 },
+      ],
+    }];
+
+    useMarketStore.getState().setFootprints(raw as any);
+    useMarketStore.getState().setFootprintView({ tickGrouping: 100 });
+
+    const state = useMarketStore.getState();
+    expect(state.footprints).toHaveLength(1);
+    expect(state.footprints[0].poc_price_level).toBe(101);
+    expect(state.footprints[0].delta_total).toBe(-2);
+  });
 });

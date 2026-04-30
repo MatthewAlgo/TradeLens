@@ -25,11 +25,19 @@ export interface FootprintLevel {
   ask_volume: number;
   delta: number;
   total_volume: number;
+  imbalance?: 'buy' | 'sell';
 }
 
 export interface FootprintCandle {
   time: string;
+  tick_grouping?: number;
   levels: FootprintLevel[];
+  poc_price_level?: number | null;
+  delta_total?: number;
+  total_volume?: number;
+  unfinished_auction_top?: boolean;
+  unfinished_auction_bottom?: boolean;
+  delta_divergence?: boolean;
 }
 
 export interface OrderBookLevel {

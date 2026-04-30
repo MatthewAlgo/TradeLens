@@ -9,6 +9,7 @@ import { loadEnv } from './config/env';
 import { optionalBearerAuth } from './middleware/auth';
 import { tokenBucket } from './middleware/rateLimit';
 import { registerHealthRoutes } from './routes/health';
+import { buildFootprintCandles, enrichFootprintPayload } from './footprints/compute';
 import { parseSubscriptionMessage, shouldDeliver } from './ws/subscriptions';
 
 const env = loadEnv();
@@ -86,22 +87,39 @@ app.get('/api/candles/:symbol/:interval', async (req, res) => {
 app.get('/api/footprints/:symbol/:interval', async (req, res) => {
   const { symbol, interval } = req.params;
   const limit = parseInt(req.query.limit as string) || 100;
+  const requestedGrouping = parseInt(req.query.tickGrouping as string);
   try {
+    const minGroupingResult = await pool.query(
+      `SELECT MIN(f.tick_grouping) AS tick_grouping
+       FROM footprints f JOIN instruments i ON f.instrument_id = i.id
+       WHERE i.symbol = $1 AND f.interval = $2`,
+      [symbol, interval]
+    );
+
+    const baseGroupingValue = minGroupingResult.rows[0]?.tick_grouping;
+    const baseGrouping = Number.isFinite(Number(baseGroupingValue))
+      ? Number(baseGroupingValue)
+      : (Number.isFinite(requestedGrouping) ? requestedGrouping : 1000);
+
+    if (!baseGrouping) {
+      res.json([]);
+      return;
+    }
+
+    const targetGrouping = Number.isFinite(requestedGrouping) && requestedGrouping > baseGrouping
+      ? requestedGrouping
+      : baseGrouping;
+
     const result = await pool.query(
       `SELECT f.time, f.price_level, f.tick_grouping, f.bid_volume, f.ask_volume, f.delta, f.total_volume
        FROM footprints f JOIN instruments i ON f.instrument_id = i.id
-       WHERE i.symbol = $1 AND f.interval = $2
-       ORDER BY f.time DESC, f.price_level ASC LIMIT $3`,
-      [symbol, interval, limit * 50]
+       WHERE i.symbol = $1 AND f.interval = $2 AND f.tick_grouping = $3
+       ORDER BY f.time DESC, f.price_level ASC LIMIT $4`,
+      [symbol, interval, baseGrouping, limit * 80]
     );
-    // Group by time
-    const grouped: Record<string, any[]> = {};
-    for (const row of result.rows) {
-      const key = row.time.toISOString();
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(row);
-    }
-    res.json(Object.entries(grouped).map(([time, levels]) => ({ time, levels })).reverse());
+
+    const candles = buildFootprintCandles(result.rows, targetGrouping);
+    res.json(candles.slice(-limit));
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
   }
@@ -227,7 +245,8 @@ async function startKafkaBridge() {
         if (topic === 'candles') {
           broadcast(`candles:${data.symbol}:${data.interval}`, data);
         } else if (topic === 'footprints') {
-          broadcast(`footprints:${data.symbol}:${data.interval}`, data);
+          const enriched = enrichFootprintPayload(data);
+          broadcast(`footprints:${data.symbol}:${data.interval}`, enriched);
         } else if (topic === 'raw_ticks') {
           broadcast(`ticks:${data.symbol}`, data);
         } else if (topic === 'order_events') {
