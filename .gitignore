@@ -54,3 +54,8 @@ proto/gen/
 # Logs
 *.log
 logs/
+
+.bare/
+.worktrees/
+main/
+config-worktree/
