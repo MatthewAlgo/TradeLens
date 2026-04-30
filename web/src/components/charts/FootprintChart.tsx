@@ -65,15 +65,20 @@ export const FootprintChart: React.FC = () => {
     let maxPrice = -Infinity;
     
     visibleData.forEach(fp => {
+      if (!fp.levels) return;
       fp.levels.forEach(level => {
-        const price = parseFloat(level.price_level as any);
-        if (price < minPrice) minPrice = price;
-        if (price > maxPrice) maxPrice = price;
+        const price = parseFloat(String(level.price_level));
+        if (!isNaN(price)) {
+          if (price < minPrice) minPrice = price;
+          if (price > maxPrice) maxPrice = price;
+        }
       });
     });
 
+    if (minPrice === Infinity) return;
+
     // Add some padding to Y axis
-    const priceRange = maxPrice - minPrice;
+    const priceRange = maxPrice - minPrice || 10;
     minPrice -= priceRange * 0.05;
     maxPrice += priceRange * 0.05;
 
@@ -85,23 +90,25 @@ export const FootprintChart: React.FC = () => {
       const x = app.screen.width - ((lastVisibleCount - i) * candleWidth) + padding;
       
       // Calculate max volume for color intensity scaling
-      const maxVolInCandle = Math.max(...candle.levels.map(l => parseFloat(l.total_volume as any) || 0));
+      const maxVolInCandle = Math.max(0, ...candle.levels.map(l => parseFloat(String(l.total_volume)) || 0));
 
       candle.levels.forEach(level => {
-        const price = parseFloat(level.price_level as any);
-        const y = getPriceY(price);
-        const cellHeight = scaleY * 10; // Assuming tick grouping is 10
+        const price = parseFloat(String(level.price_level));
+        if (isNaN(price)) return;
         
-        const delta = parseFloat(level.delta as any) || 0;
+        const y = getPriceY(price);
+        const cellHeight = Math.max(2, scaleY * 5); // Minimum height to be visible
+        
+        const delta = parseFloat(String(level.delta)) || 0;
         let color = 0x1e293b; // Default neutral cold
         
         if (delta > 0) {
           // Intensity based on ratio to max volume
           const intensity = Math.min(1, delta / (maxVolInCandle || 1));
-          color = PIXI.Color.shared.setValue([0.2, 0.5 + (0.5 * intensity), 0.9]).toNumber();
+          color = PIXI.Color.shared.setValue([0.1, 0.4 + (0.5 * intensity), 0.8]).toNumber();
         } else if (delta < 0) {
           const intensity = Math.min(1, Math.abs(delta) / (maxVolInCandle || 1));
-          color = PIXI.Color.shared.setValue([0.5 + (0.5 * intensity), 0.2, 0.2]).toNumber();
+          color = PIXI.Color.shared.setValue([0.4 + (0.5 * intensity), 0.1, 0.1]).toNumber();
         }
 
         // Draw the background cell
@@ -110,26 +117,28 @@ export const FootprintChart: React.FC = () => {
         graphics.fill({ color, alpha: 0.8 });
         mainContainer.addChild(graphics);
 
-        // Draw bid x ask text
-        const textStyle = new PIXI.TextStyle({
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 10,
-          fill: 0xe8ecf4,
-          align: 'center',
-        });
-        
-        const bidVol = parseFloat(level.bid_volume as any) || 0;
-        const askVol = parseFloat(level.ask_volume as any) || 0;
-        const text = new PIXI.Text({
-          text: `${bidVol.toFixed(1)} x ${askVol.toFixed(1)}`, 
-          style: textStyle
-        });
-        
-        text.anchor.set(0.5);
-        text.x = x + (candleWidth - padding * 2) / 2;
-        text.y = y;
-        
-        mainContainer.addChild(text);
+        // Draw bid x ask text if there's enough space
+        if (cellHeight > 12) {
+          const textStyle = new PIXI.TextStyle({
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: 9,
+            fill: 0xe8ecf4,
+            align: 'center',
+          });
+          
+          const bidVol = parseFloat(String(level.bid_volume)) || 0;
+          const askVol = parseFloat(String(level.ask_volume)) || 0;
+          const text = new PIXI.Text({
+            text: `${bidVol.toFixed(0)}x${askVol.toFixed(0)}`, 
+            style: textStyle
+          });
+          
+          text.anchor.set(0.5);
+          text.x = x + (candleWidth - padding * 2) / 2;
+          text.y = y;
+          
+          mainContainer.addChild(text);
+        }
       });
     });
   };

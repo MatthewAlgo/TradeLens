@@ -69,20 +69,23 @@ export const CandlestickChart: React.FC = () => {
     try {
       if (!seriesRef.current || candles.length === 0) return;
       
-      // Map backend candles to Lightweight Charts format
+      // Map backend candles to Lightweight Charts format with defensive parsing
       const formattedData: CandlestickData<Time>[] = candles
-        .filter(c => c && c.time)
+        .filter(c => c && c.time && c.open != null && c.high != null && c.low != null && c.close != null)
         .map(c => {
-        // Create a Unix timestamp in seconds
-        const ts = new Date(c.time).getTime() / 1000;
-        return {
-          time: ts as Time,
-          open: parseFloat(c.open as any),
-          high: parseFloat(c.high as any),
-          low: parseFloat(c.low as any),
-          close: parseFloat(c.close as any),
-        };
-      }).sort((a, b) => (a.time as number) - (b.time as number));
+          // Create a Unix timestamp in seconds
+          const ts = Math.floor(new Date(c.time).getTime() / 1000);
+          
+          return {
+            time: ts as Time,
+            open: parseFloat(String(c.open)) || 0,
+            high: parseFloat(String(c.high)) || 0,
+            low: parseFloat(String(c.low)) || 0,
+            close: parseFloat(String(c.close)) || 0,
+          };
+        })
+        .filter(d => !isNaN(d.time as number))
+        .sort((a, b) => (a.time as number) - (b.time as number));
 
       // Dedup and clean up time scale conflicts
       const uniqueMap = new Map();
