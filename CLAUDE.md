@@ -21,6 +21,10 @@ Welcome to the TradeLens repository! This file provides instructions for AI agen
    - `TimescaleDB`: ONLY used for time-series data (Ticks, Candles, Footprints).
    - `PostgreSQL`: Used for stateful entities (Users, Orders, Positions).
    - `Redis`: Used for ephemeral states like the live Order Book and session caching.
+4. **Indicators & Security**:
+    - Real-time indicators are calculated in the `aggregator` service to reduce frontend load.
+    - All dynamic Python strategies MUST pass through the `StrategyLoader` in `backtester` to ensure static analysis safety.
+    - The `OMS` publishes execution reports and state changes to the `order_events` Kafka topic.
 
 ## Build and Run Commands
 

@@ -1,0 +1,31 @@
+# TradeLens
+
+> Enterprise-grade crypto trading and order flow analysis platform.
+
+TradeLens is a microservices-based platform designed for high-frequency market data ingestion, real-time indicator computation, and advanced order management. It features a React-based frontend with WebGL footprint charts and a secure Python-based backtesting engine.
+
+## Documentation
+
+- [README](README.md): Overview, system architecture, and quick start guide.
+- [AGENTS](AGENTS.md): Guide for autonomous AI agents working on the codebase.
+- [CLAUDE](CLAUDE.md): Specific guidelines and architectural rules for AI models.
+
+## Architecture
+
+- [System Architecture](docs/architecture.md): Detailed breakdown of microservices and data flows.
+- [Database Schema](db/migrations/): TimescaleDB and PostgreSQL schema definitions.
+- [Protobuf Contracts](proto/): Shared message definitions for inter-service communication.
+
+## Services
+
+- [Market Data Ingester](services/market-data-ingester/): Go service for Binance and Mock Exchange connectivity.
+- [Aggregator Engine](services/aggregator/): Go service for OHLCV, Footprints, and real-time indicators.
+- [Order Management System](services/oms/): Go service for paper trading and advanced order types.
+- [Backtesting Engine](services/backtester/): Python FastAPI service with secure strategy sandboxing.
+- [API Gateway](services/api-gateway/): Node.js/TypeScript entrypoint for REST and WebSockets.
+
+## Development
+
+- [Makefile](Makefile): Centralized task runner for infra, builds, and tests.
+- [Docker Compose](docker-compose.yml): Production-ready container orchestration with healthchecks.
+- [Frontend](web/): React/Vite dashboard with TradingView and PixiJS integration.
