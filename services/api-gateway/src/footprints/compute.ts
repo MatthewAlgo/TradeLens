@@ -14,6 +14,8 @@ export interface FootprintCandle {
   tick_grouping: number;
   levels: FootprintLevel[];
   poc_price_level: number | null;
+  value_area_high: number | null;
+  value_area_low: number | null;
   delta_total: number;
   total_volume: number;
   unfinished_auction_top: boolean;
@@ -104,6 +106,8 @@ export function buildFootprintCandle(
       tick_grouping: tickGrouping,
       levels: [],
       poc_price_level: null,
+      value_area_high: null,
+      value_area_low: null,
       delta_total: 0,
       total_volume: 0,
       unfinished_auction_top: false,
@@ -125,6 +129,34 @@ export function buildFootprintCandle(
     }
   }
 
+  // Calculate Value Area (70% of volume)
+  const targetVA = totalVolume * 0.7;
+  let currentVAVolume = pocLevel.total_volume;
+  
+  // Find index of POC
+  let pocIdx = enriched.findIndex(l => l.price_level === pocLevel.price_level);
+  let upperIdx = pocIdx + 1;
+  let lowerIdx = pocIdx - 1;
+  
+  while (currentVAVolume < targetVA && (upperIdx < enriched.length || lowerIdx >= 0)) {
+    let upperVol = upperIdx < enriched.length ? enriched[upperIdx].total_volume : -1;
+    let lowerVol = lowerIdx >= 0 ? enriched[lowerIdx].total_volume : -1;
+    
+    if (upperVol >= lowerVol && upperVol !== -1) {
+      currentVAVolume += upperVol;
+      upperIdx++;
+    } else if (lowerVol !== -1) {
+      currentVAVolume += lowerVol;
+      lowerIdx--;
+    } else {
+      break;
+    }
+  }
+
+  // The actual Value Area bounds
+  const valLevel = lowerIdx + 1;
+  const vahLevel = upperIdx - 1;
+
   const top = enriched[enriched.length - 1];
   const bottom = enriched[0];
   const unfinishedTop = top.bid_volume > 0 && top.ask_volume > 0;
@@ -135,6 +167,8 @@ export function buildFootprintCandle(
     tick_grouping: tickGrouping,
     levels: enriched,
     poc_price_level: pocLevel.price_level,
+    value_area_high: enriched[vahLevel]?.price_level ?? pocLevel.price_level,
+    value_area_low: enriched[valLevel]?.price_level ?? pocLevel.price_level,
     delta_total: deltaTotal,
     total_volume: totalVolume,
     unfinished_auction_top: unfinishedTop,

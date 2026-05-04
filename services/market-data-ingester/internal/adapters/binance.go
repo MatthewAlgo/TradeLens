@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -48,6 +49,9 @@ func (b *BinanceAdapter) Connect(ctx context.Context, tickCh chan<- []byte) erro
 	}
 	url := fmt.Sprintf("%s/%s", b.baseURL, strings.Join(streams, "/"))
 
+	var backoff time.Duration = 1 * time.Second
+	const maxBackoff = 30 * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,14 +60,31 @@ func (b *BinanceAdapter) Connect(ctx context.Context, tickCh chan<- []byte) erro
 		}
 
 		slog.Info("Connecting to Binance", "url", url)
-		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+		
+		// Use a dial context with 10s timeout
+		dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
+		conn, _, err := websocket.DefaultDialer.DialContext(dialCtx, url, nil)
+		dialCancel()
+		
 		if err != nil {
 			slog.Error("Binance connection failed", "error", err)
-			time.Sleep(5 * time.Second)
+			
+			// Exponential backoff with jitter
+			sleepTime := backoff + time.Duration(rand.Int63n(int64(backoff)*2))
+			slog.Info("Sleeping before reconnect", "duration", sleepTime)
+			time.Sleep(sleepTime)
+			
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
 			continue
 		}
 
+		// Reset backoff on successful connect
+		backoff = 1 * time.Second
 		slog.Info("Connected to Binance")
+		
 		err = b.readLoop(ctx, conn, tickCh)
 		conn.Close()
 
@@ -72,7 +93,7 @@ func (b *BinanceAdapter) Connect(ctx context.Context, tickCh chan<- []byte) erro
 		}
 
 		slog.Warn("Binance connection lost, reconnecting...", "error", err)
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second) // Immediate reconnect on drop
 	}
 }
 

@@ -23,7 +23,7 @@ func New(brokers string, topic string) (*Producer, error) {
 	w := &kafka.Writer{
 		Addr:         kafka.TCP(brokerList...),
 		Topic:        topic,
-		Balancer:     &kafka.RoundRobin{},
+		Balancer:     &kafka.Hash{},
 		BatchSize:    100,
 		BatchTimeout: 10 * time.Millisecond,
 		Async:        true,

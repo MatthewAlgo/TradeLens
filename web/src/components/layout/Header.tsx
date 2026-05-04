@@ -1,10 +1,15 @@
+import React, { useEffect } from 'react';
 import { useMarketStore } from '../../stores/marketStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Activity, Settings, Code, BarChart2 } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { symbol, currentPrice } = useMarketStore();
+  const { symbol, setSymbol, availableSymbols, fetchSymbols, currentPrice } = useMarketStore();
   const { view, setView } = useUIStore();
+
+  useEffect(() => {
+    fetchSymbols();
+  }, [fetchSymbols]);
 
   return (
     <header className="app-header">
@@ -33,8 +38,25 @@ export const Header: React.FC = () => {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-lg)', justifyContent: 'flex-end', width: '300px' }}>
-        <div className="stat-card" style={{ alignItems: 'flex-end' }}>
-          <span className="stat-label">{symbol}</span>
+        <div className="stat-card" style={{ alignItems: 'flex-end', gap: '4px' }}>
+          <select 
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            className="stat-label"
+            style={{ 
+              background: 'transparent', 
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              padding: '2px 4px',
+              cursor: 'pointer',
+              outline: 'none'
+            }}
+          >
+            {availableSymbols.map(sym => (
+              <option key={sym} value={sym} style={{ background: 'var(--surface-color)', color: 'white' }}>{sym}</option>
+            ))}
+          </select>
           <span className={`stat-value ${currentPrice > 0 ? 'price-up' : ''}`}>
             ${currentPrice > 0 ? currentPrice.toFixed(2) : '---'}
           </span>

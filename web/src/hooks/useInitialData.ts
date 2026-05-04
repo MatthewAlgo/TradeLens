@@ -5,7 +5,7 @@ import { useOrderStore } from '../stores/orderStore';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export function useInitialData() {
-  const { symbol, interval, footprintView, setCandles, setFootprints } = useMarketStore();
+  const { symbol, interval, setCandles, setFootprints } = useMarketStore();
   const { setOrders, setPositions } = useOrderStore();
 
   const fetchHistory = useCallback(async () => {
@@ -20,9 +20,7 @@ export function useInitialData() {
       }
 
       // Fetch footprints
-      const footprintsResp = await fetch(
-        `${API_URL}/api/footprints/${symbol}/${interval}?limit=100&tickGrouping=${footprintView.tickGrouping}`
-      );
+      const footprintsResp = await fetch(`${API_URL}/api/footprints/${symbol}/${interval}?limit=100`);
       if (footprintsResp.ok) {
         const data = await footprintsResp.json();
         setFootprints(data);
@@ -42,7 +40,7 @@ export function useInitialData() {
     } catch (err) {
       console.error('[API] Error fetching initial data', err);
     }
-  }, [symbol, interval, footprintView.tickGrouping, setCandles, setFootprints, setOrders, setPositions]);
+  }, [symbol, interval, setCandles, setFootprints, setOrders, setPositions]);
 
   useEffect(() => {
     fetchHistory();

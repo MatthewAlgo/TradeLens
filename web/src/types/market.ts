@@ -33,6 +33,8 @@ export interface FootprintCandle {
   tick_grouping?: number;
   levels: FootprintLevel[];
   poc_price_level?: number | null;
+  value_area_high?: number | null;
+  value_area_low?: number | null;
   delta_total?: number;
   total_volume?: number;
   unfinished_auction_top?: boolean;

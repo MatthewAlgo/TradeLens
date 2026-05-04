@@ -13,9 +13,11 @@ interface MarketState {
   orderbook: OrderBook | null;
   recentTicks: Tick[];
   footprintView: FootprintViewState;
+  availableSymbols: string[];
   
   setSymbol: (symbol: string) => void;
   setInterval: (interval: string) => void;
+  fetchSymbols: () => Promise<void>;
   setCandles: (candles: OHLCV[]) => void;
   addCandle: (candle: OHLCV) => void;
   setFootprints: (footprints: FootprintCandle[]) => void;
@@ -42,9 +44,39 @@ export const useMarketStore = create<MarketState>((set) => ({
     compactMode: false,
     zoom: 1,
   },
+  availableSymbols: ['BTCUSDT'], // Default fallback
 
-  setSymbol: (symbol) => set({ symbol }),
-  setInterval: (interval) => set({ interval }),
+  setSymbol: (symbol) => set({ 
+    symbol,
+    currentPrice: 0,
+    candles: [],
+    footprints: [],
+    rawFootprints: [],
+    recentTicks: [],
+    orderbook: null
+  }),
+  setInterval: (interval) => set({ 
+    interval,
+    candles: [],
+    footprints: [],
+    rawFootprints: []
+  }),
+  
+  fetchSymbols: async () => {
+    try {
+      const url = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+      const res = await fetch(`${url}/instruments`);
+      if (res.ok) {
+        const data = await res.json();
+        const symbols = data.map((i: any) => i.symbol);
+        if (symbols.length > 0) {
+          set({ availableSymbols: symbols });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch symbols', err);
+    }
+  },
   
   setCandles: (candles) => set({ candles }),
   addCandle: (candle) => set((state) => {

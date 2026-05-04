@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ type Engine struct {
 	positions      map[string]*models.Position // key: symbol
 	lastPrices     map[string]float64
 	orderSeq       int
+	orderProducer  *kafka.Writer // publishes order events to Kafka
 }
 
 // tick from ingester
@@ -36,14 +38,57 @@ type internalTick struct {
 	TimestampMs int64   `json:"timestamp_ms"`
 }
 
-func New(initialBalance, commissionRate, slippageBPS float64) *Engine {
-	return &Engine{
+func New(initialBalance, commissionRate, slippageBPS float64, brokers string) *Engine {
+	e := &Engine{
 		balance:        initialBalance,
 		commissionRate: commissionRate,
 		slippageBPS:    slippageBPS,
 		orders:         make(map[string]*models.Order),
 		positions:      make(map[string]*models.Position),
 		lastPrices:     make(map[string]float64),
+	}
+
+	// Initialize Kafka producer for order events if brokers are configured
+	if brokers != "" {
+		brokerList := strings.Split(brokers, ",")
+		e.orderProducer = &kafka.Writer{
+			Addr:         kafka.TCP(brokerList...),
+			Topic:        "order_events",
+			Balancer:     &kafka.Hash{},
+			BatchSize:    10,
+			BatchTimeout: 50 * time.Millisecond,
+			Async:        true,
+			RequiredAcks: kafka.RequireOne,
+		}
+		slog.Info("OMS order event producer initialized", "topic", "order_events")
+	}
+
+	return e
+}
+
+// publishOrderEvent sends an order state change to the order_events Kafka topic.
+func (e *Engine) publishOrderEvent(order *models.Order) {
+	if e.orderProducer == nil {
+		return
+	}
+
+	event := map[string]interface{}{
+		"event": "order_update",
+		"order": order,
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		slog.Error("Failed to marshal order event", "error", err)
+		return
+	}
+
+	if pubErr := e.orderProducer.WriteMessages(context.Background(), kafka.Message{
+		Key:   []byte(order.Symbol),
+		Value: data,
+		Time:  time.Now(),
+	}); pubErr != nil {
+		slog.Error("Failed to publish order event", "error", pubErr, "orderID", order.ID)
 	}
 }
 
@@ -67,26 +112,62 @@ func (e *Engine) SubmitOrder(req models.OrderRequest) (*models.Order, error) {
 		Symbol:    req.Symbol,
 		Side:      req.Side,
 		OrderType: req.OrderType,
-		Quantity:  req.Quantity,
-		Price:     req.Price,
-		StopPrice: req.StopPrice,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Quantity:       req.Quantity,
+		Price:          req.Price,
+		StopPrice:      req.StopPrice,
+		TimeInForce:    req.TimeInForce,
+		PostOnly:       req.PostOnly,
+		TrailingOffset: req.TrailingOffset,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	switch req.OrderType {
 	case "MARKET":
-		return e.executeMarketOrder(order)
+		return e.executeOrderCross(order)
 	case "LIMIT":
 		if req.Price <= 0 {
 			return nil, fmt.Errorf("limit order requires a price")
 		}
+		lastPrice := e.lastPrices[order.Symbol]
+		crossesSpread := false
+		if lastPrice > 0 {
+			if order.Side == "BUY" && order.Price >= lastPrice {
+				crossesSpread = true
+			} else if order.Side == "SELL" && order.Price <= lastPrice {
+				crossesSpread = true
+			}
+		}
+
+		if req.PostOnly && crossesSpread {
+			order.Status = "REJECTED"
+			e.orders[order.ID] = order
+			return order, fmt.Errorf("post-only order would cross the spread")
+		}
+
+		if crossesSpread && (req.TimeInForce == "IOC" || req.TimeInForce == "FOK" || req.TimeInForce == "" || req.TimeInForce == "GTC") {
+			return e.executeOrderCross(order)
+		}
+
 		order.Status = "OPEN"
 		e.orders[order.ID] = order
 		return order, nil
-	case "STOP_LOSS", "TAKE_PROFIT":
-		if req.StopPrice <= 0 {
+	case "STOP_LOSS", "TAKE_PROFIT", "TRAILING_STOP":
+		if req.OrderType != "TRAILING_STOP" && req.StopPrice <= 0 {
 			return nil, fmt.Errorf("stop/TP order requires a stop_price")
+		}
+		if req.OrderType == "TRAILING_STOP" && req.TrailingOffset <= 0 {
+			return nil, fmt.Errorf("trailing stop requires a trailing_offset")
+		}
+		if req.OrderType == "TRAILING_STOP" {
+			lastPrice := e.lastPrices[order.Symbol]
+			if lastPrice > 0 {
+				if order.Side == "SELL" {
+					order.StopPrice = lastPrice - order.TrailingOffset
+				} else {
+					order.StopPrice = lastPrice + order.TrailingOffset
+				}
+			}
 		}
 		order.Status = "OPEN"
 		e.orders[order.ID] = order
@@ -96,7 +177,7 @@ func (e *Engine) SubmitOrder(req models.OrderRequest) (*models.Order, error) {
 	}
 }
 
-func (e *Engine) executeMarketOrder(order *models.Order) (*models.Order, error) {
+func (e *Engine) executeOrderCross(order *models.Order) (*models.Order, error) {
 	lastPrice, ok := e.lastPrices[order.Symbol]
 	if !ok {
 		// If no price yet, reject
@@ -115,8 +196,23 @@ func (e *Engine) executeMarketOrder(order *models.Order) (*models.Order, error) 
 		fillPrice -= slippage
 	}
 
-	// Calculate cost and commission
-	cost := fillPrice * order.Quantity
+	// Partial fill simulation: 50% to 100% fill if quantity is large
+	fillRatio := 1.0
+	if order.Quantity > 1.0 && order.TimeInForce != "FOK" {
+		fillRatio = 0.5 + rand.Float64()*0.5
+	}
+	
+	remainingQty := order.Quantity - order.FilledQuantity
+	fillQty := remainingQty * fillRatio
+	
+	// FOK must fill completely
+	if order.TimeInForce == "FOK" && fillRatio < 1.0 {
+		order.Status = "CANCELLED"
+		e.orders[order.ID] = order
+		return order, fmt.Errorf("fok order could not be fully filled")
+	}
+
+	cost := fillPrice * fillQty
 	commission := cost * e.commissionRate
 
 	if order.Side == "BUY" {
@@ -131,29 +227,43 @@ func (e *Engine) executeMarketOrder(order *models.Order) (*models.Order, error) 
 	}
 
 	now := time.Now()
-	order.Status = "FILLED"
-	order.FilledQuantity = order.Quantity
-	order.AvgFillPrice = fillPrice
-	order.Commission = commission
+	order.FilledQuantity += fillQty
+	order.AvgFillPrice = fillPrice // Simplified: in reality this is volume-weighted
+	order.Commission += commission
 	order.FilledAt = &now
 	order.UpdatedAt = now
+
+	if order.FilledQuantity >= order.Quantity*0.999 {
+		order.Status = "FILLED"
+		order.FilledQuantity = order.Quantity
+	} else if order.TimeInForce == "IOC" || order.OrderType == "MARKET" {
+		// IOC and Market cancel the remaining
+		order.Status = "CANCELLED"
+	} else {
+		order.Status = "OPEN"
+	}
+	
 	e.orders[order.ID] = order
 
 	// Update position
-	e.updatePosition(order)
+	e.updatePosition(order, fillQty)
 
-	slog.Info("Order filled",
+	slog.Info("Order executed",
 		"id", order.ID,
 		"symbol", order.Symbol,
 		"side", order.Side,
-		"qty", order.Quantity,
+		"fillQty", fillQty,
 		"price", fillPrice,
-		"commission", commission)
+		"commission", commission,
+		"status", order.Status)
+
+	// Publish order event to Kafka for the WS bridge
+	e.publishOrderEvent(order)
 
 	return order, nil
 }
 
-func (e *Engine) updatePosition(order *models.Order) {
+func (e *Engine) updatePosition(order *models.Order, fillQty float64) {
 	pos, exists := e.positions[order.Symbol]
 
 	if order.Side == "BUY" {
@@ -161,19 +271,19 @@ func (e *Engine) updatePosition(order *models.Order) {
 			e.positions[order.Symbol] = &models.Position{
 				Symbol:        order.Symbol,
 				Side:          "LONG",
-				Quantity:      order.FilledQuantity,
+				Quantity:      fillQty,
 				AvgEntryPrice: order.AvgFillPrice,
 			}
 		} else if pos.Side == "LONG" {
 			// Add to long position
-			totalCost := pos.AvgEntryPrice*pos.Quantity + order.AvgFillPrice*order.FilledQuantity
-			pos.Quantity += order.FilledQuantity
+			totalCost := pos.AvgEntryPrice*pos.Quantity + order.AvgFillPrice*fillQty
+			pos.Quantity += fillQty
 			pos.AvgEntryPrice = totalCost / pos.Quantity
 		} else {
 			// Closing short
-			pnl := (pos.AvgEntryPrice - order.AvgFillPrice) * math.Min(pos.Quantity, order.FilledQuantity)
+			pnl := (pos.AvgEntryPrice - order.AvgFillPrice) * math.Min(pos.Quantity, fillQty)
 			pos.RealizedPnL += pnl
-			pos.Quantity -= order.FilledQuantity
+			pos.Quantity -= fillQty
 			if pos.Quantity <= 0 {
 				delete(e.positions, order.Symbol)
 			}
@@ -183,21 +293,21 @@ func (e *Engine) updatePosition(order *models.Order) {
 			e.positions[order.Symbol] = &models.Position{
 				Symbol:        order.Symbol,
 				Side:          "SHORT",
-				Quantity:      order.FilledQuantity,
+				Quantity:      fillQty,
 				AvgEntryPrice: order.AvgFillPrice,
 			}
 		} else if pos.Side == "LONG" {
 			// Closing long
-			pnl := (order.AvgFillPrice - pos.AvgEntryPrice) * math.Min(pos.Quantity, order.FilledQuantity)
+			pnl := (order.AvgFillPrice - pos.AvgEntryPrice) * math.Min(pos.Quantity, fillQty)
 			pos.RealizedPnL += pnl
-			pos.Quantity -= order.FilledQuantity
+			pos.Quantity -= fillQty
 			if pos.Quantity <= 0 {
 				delete(e.positions, order.Symbol)
 			}
 		} else {
 			// Add to short
-			totalCost := pos.AvgEntryPrice*pos.Quantity + order.AvgFillPrice*order.FilledQuantity
-			pos.Quantity += order.FilledQuantity
+			totalCost := pos.AvgEntryPrice*pos.Quantity + order.AvgFillPrice*fillQty
+			pos.Quantity += fillQty
 			pos.AvgEntryPrice = totalCost / pos.Quantity
 		}
 	}
@@ -218,6 +328,10 @@ func (e *Engine) CancelOrder(id string) error {
 
 	order.Status = "CANCELLED"
 	order.UpdatedAt = time.Now()
+
+	// Publish cancellation event
+	e.publishOrderEvent(order)
+
 	return nil
 }
 
@@ -354,10 +468,26 @@ func (e *Engine) StartPriceFeed(ctx context.Context, brokers string) {
 				} else if order.Side == "BUY" && tick.Price <= order.StopPrice {
 					triggered = true
 				}
+			case "TRAILING_STOP":
+				if order.Side == "SELL" {
+					if tick.Price-order.TrailingOffset > order.StopPrice {
+						order.StopPrice = tick.Price - order.TrailingOffset
+					}
+					if tick.Price <= order.StopPrice {
+						triggered = true
+					}
+				} else {
+					if tick.Price+order.TrailingOffset < order.StopPrice || order.StopPrice == 0 {
+						order.StopPrice = tick.Price + order.TrailingOffset
+					}
+					if tick.Price >= order.StopPrice {
+						triggered = true
+					}
+				}
 			}
 
 			if triggered {
-				e.executeMarketOrder(order)
+				e.executeOrderCross(order)
 			}
 		}
 		e.mu.Unlock()

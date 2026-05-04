@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/MatthewAlgo/TradeLens/services/market-data-ingester/internal/normalizer"
@@ -21,6 +22,9 @@ func NewMockAdapter(url string) *MockAdapter {
 }
 
 func (m *MockAdapter) Connect(ctx context.Context, tickCh chan<- []byte) error {
+	var backoff time.Duration = 1 * time.Second
+	const maxBackoff = 30 * time.Second
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -29,14 +33,31 @@ func (m *MockAdapter) Connect(ctx context.Context, tickCh chan<- []byte) error {
 		}
 
 		slog.Info("Connecting to Mock Exchange", "url", m.url)
-		conn, _, err := websocket.DefaultDialer.Dial(m.url, nil)
+		
+		// Use a dial context with 10s timeout
+		dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
+		conn, _, err := websocket.DefaultDialer.DialContext(dialCtx, m.url, nil)
+		dialCancel()
+		
 		if err != nil {
-			slog.Error("Mock Exchange connection failed, retrying...", "error", err)
-			time.Sleep(2 * time.Second)
+			slog.Error("Mock Exchange connection failed", "error", err)
+			
+			// Exponential backoff with jitter
+			sleepTime := backoff + time.Duration(rand.Int63n(int64(backoff)*2))
+			slog.Info("Sleeping before reconnect", "duration", sleepTime)
+			time.Sleep(sleepTime)
+			
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
 			continue
 		}
 
+		// Reset backoff on successful connect
+		backoff = 1 * time.Second
 		slog.Info("Connected to Mock Exchange")
+		
 		err = m.readLoop(ctx, conn, tickCh)
 		conn.Close()
 
@@ -45,7 +66,7 @@ func (m *MockAdapter) Connect(ctx context.Context, tickCh chan<- []byte) error {
 		}
 
 		slog.Warn("Mock Exchange connection lost, reconnecting...", "error", err)
-		time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Second) // Immediate reconnect on drop
 	}
 }
 
