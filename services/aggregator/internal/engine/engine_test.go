@@ -19,7 +19,7 @@ func TestTruncateToInterval(t *testing.T) {
 }
 
 func TestProcessTickUpdatesCandleState(t *testing.T) {
-	e := New([]string{"1m"}, 1000, nil)
+	e := New([]string{"1m"}, 1000, nil, nil, nil)
 	tick := NormalizedTick{
 		TimestampMs: 1735732800000,
 		Symbol:      "BTCUSDT",
@@ -36,10 +36,14 @@ func TestProcessTickUpdatesCandleState(t *testing.T) {
 
 	e.ProcessTick(b)
 
-	key := "BTCUSDT:1m"
-	c, ok := e.candles[key]
+	se, ok := e.symbols["BTCUSDT"]
 	if !ok {
-		t.Fatalf("expected candle for %s", key)
+		t.Fatalf("expected SymbolEngine for BTCUSDT")
+	}
+
+	c, ok := se.candles["1m"]
+	if !ok {
+		t.Fatalf("expected candle for 1m interval")
 	}
 
 	if c.Open != 100.0 || c.Close != 100.0 {

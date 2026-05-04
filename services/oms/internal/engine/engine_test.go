@@ -7,7 +7,7 @@ import (
 )
 
 func TestSubmitMarketOrderRequiresPriceFeed(t *testing.T) {
-	e := New(1000.0, 0.001, 5.0)
+	e := New(1000.0, 0.001, 5.0, "")
 
 	_, err := e.SubmitOrder(models.OrderRequest{
 		Symbol:    "BTCUSDT",
@@ -22,7 +22,7 @@ func TestSubmitMarketOrderRequiresPriceFeed(t *testing.T) {
 }
 
 func TestSubmitMarketOrderFillsWhenPriceAvailable(t *testing.T) {
-	e := New(100000.0, 0.001, 5.0)
+	e := New(100000.0, 0.001, 5.0, "")
 	e.lastPrices["BTCUSDT"] = 50000.0
 
 	order, err := e.SubmitOrder(models.OrderRequest{
@@ -41,7 +41,7 @@ func TestSubmitMarketOrderFillsWhenPriceAvailable(t *testing.T) {
 }
 
 func TestCancelOpenLimitOrder(t *testing.T) {
-	e := New(100000.0, 0.001, 5.0)
+	e := New(100000.0, 0.001, 5.0, "")
 
 	order, err := e.SubmitOrder(models.OrderRequest{
 		Symbol:    "BTCUSDT",

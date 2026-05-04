@@ -14,6 +14,7 @@ import (
 	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/config"
 	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/consumer"
 	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/engine"
+	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/producer"
 	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/writer"
 )
 
@@ -36,9 +37,24 @@ func main() {
 	defer db.Close()
 	slog.Info("TimescaleDB writer initialized")
 
-	// Initialize aggregation engine
+	// Initialize aggregation engine with Kafka producers for downstream publishing
 	intervals := strings.Split(cfg.Intervals, ",")
-	agg := engine.New(intervals, cfg.TickGrouping, db)
+
+	candleProd, err := producer.New(cfg.RedpandaBrokers, "candles")
+	if err != nil {
+		slog.Error("Failed to create candle producer", "error", err)
+		os.Exit(1)
+	}
+	defer candleProd.Close()
+
+	footprintProd, err := producer.New(cfg.RedpandaBrokers, "footprints")
+	if err != nil {
+		slog.Error("Failed to create footprint producer", "error", err)
+		os.Exit(1)
+	}
+	defer footprintProd.Close()
+
+	agg := engine.New(intervals, cfg.TickGrouping, db, candleProd, footprintProd)
 	slog.Info("Aggregation engine initialized", "intervals", intervals, "tickGrouping", cfg.TickGrouping)
 
 	// Initialize Redpanda consumer

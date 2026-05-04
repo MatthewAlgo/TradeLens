@@ -27,7 +27,7 @@ func main() {
 	cfg := config.Load()
 
 	// Initialize the OMS engine
-	oms := engine.New(cfg.InitialBalance, cfg.CommissionRate, cfg.SlippageBPS)
+	oms := engine.New(cfg.InitialBalance, cfg.CommissionRate, cfg.SlippageBPS, cfg.RedpandaBrokers)
 	slog.Info("OMS engine initialized",
 		"balance", cfg.InitialBalance,
 		"commission", cfg.CommissionRate,

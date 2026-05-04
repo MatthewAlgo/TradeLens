@@ -7,9 +7,12 @@ type OrderRequest struct {
 	Symbol    string  `json:"symbol"`
 	Side      string  `json:"side"`       // "BUY" or "SELL"
 	OrderType string  `json:"order_type"` // "MARKET", "LIMIT", "STOP_LOSS", "TAKE_PROFIT"
-	Quantity  float64 `json:"quantity"`
-	Price     float64 `json:"price,omitempty"`      // For LIMIT orders
-	StopPrice float64 `json:"stop_price,omitempty"` // For STOP_LOSS/TAKE_PROFIT
+	Quantity       float64 `json:"quantity"`
+	Price          float64 `json:"price,omitempty"`      // For LIMIT orders
+	StopPrice      float64 `json:"stop_price,omitempty"` // For STOP_LOSS/TAKE_PROFIT
+	TimeInForce    string  `json:"time_in_force,omitempty"` // GTC, IOC, FOK
+	PostOnly       bool    `json:"post_only,omitempty"`
+	TrailingOffset float64 `json:"trailing_offset,omitempty"` // For trailing stops
 }
 
 // Order represents a full order in the system.
@@ -23,6 +26,9 @@ type Order struct {
 	FilledQuantity float64   `json:"filled_quantity"`
 	Price          float64   `json:"price,omitempty"`
 	StopPrice      float64   `json:"stop_price,omitempty"`
+	TimeInForce    string    `json:"time_in_force,omitempty"`
+	PostOnly       bool      `json:"post_only,omitempty"`
+	TrailingOffset float64   `json:"trailing_offset,omitempty"`
 	AvgFillPrice   float64   `json:"avg_fill_price,omitempty"`
 	Commission     float64   `json:"commission"`
 	CreatedAt      time.Time `json:"created_at"`

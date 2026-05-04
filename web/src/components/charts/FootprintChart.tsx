@@ -126,6 +126,15 @@ export const FootprintChart: React.FC = () => {
     const scaleY = app.screen.height / (maxPrice - minPrice);
     const getPriceY = (price: number) => app.screen.height - ((price - minPrice) * scaleY);
 
+    // Create batched graphics objects
+    const bgGraphics = new PIXI.Graphics();
+    const borderGraphics = new PIXI.Graphics();
+    const markerGraphics = new PIXI.Graphics();
+    
+    mainContainer.addChild(bgGraphics);
+    mainContainer.addChild(borderGraphics);
+    mainContainer.addChild(markerGraphics);
+
     // Draw footprints
     visibleData.forEach((candle, i) => {
       const x = app.screen.width - ((lastVisibleCount - i) * candleWidth) + padding;
@@ -146,28 +155,29 @@ export const FootprintChart: React.FC = () => {
         const color = getHeatColor(delta, intensity, footprintView.heatmap);
 
         // Draw the background cell
-        const graphics = new PIXI.Graphics();
-        graphics.rect(x, y - cellHeight / 2, candleWidth - padding * 2, cellHeight - 1);
-        graphics.fill({ color, alpha: 0.8 });
-        mainContainer.addChild(graphics);
-
+        bgGraphics.rect(x, y - cellHeight / 2, candleWidth - padding * 2, cellHeight - 1);
+        bgGraphics.fill({ color, alpha: 0.8 });
         if (pocPrice != null && Math.abs(pocPrice - price) < 0.0001) {
-          const pocBox = new PIXI.Graphics();
-          pocBox.rect(x, y - cellHeight / 2, candleWidth - padding * 2, cellHeight - 1);
-          pocBox.stroke({ color: 0xfbbf24, width: 1 });
-          mainContainer.addChild(pocBox);
+          borderGraphics.rect(x, y - cellHeight / 2, candleWidth - padding * 2, cellHeight - 1);
+          borderGraphics.stroke({ color: 0xfbbf24, width: 1 });
+        }
+
+        const inValueArea = candle.value_area_high != null && candle.value_area_low != null &&
+                            price <= candle.value_area_high + 0.0001 && price >= candle.value_area_low - 0.0001;
+                            
+        if (inValueArea) {
+          markerGraphics.rect(x - 2, y - cellHeight / 2, 2, cellHeight - 1);
+          markerGraphics.fill({ color: 0x94a3b8, alpha: 0.5 });
         }
 
         if (level.imbalance === 'buy' || level.imbalance === 'sell') {
-          const imbalance = new PIXI.Graphics();
           const color = level.imbalance === 'buy' ? 0x22d3ee : 0xf472b6;
           const markerWidth = 4;
           const markerX = level.imbalance === 'buy'
             ? x + candleWidth - padding * 2 - markerWidth
             : x;
-          imbalance.rect(markerX, y - cellHeight / 2, markerWidth, cellHeight - 1);
-          imbalance.fill({ color, alpha: 0.9 });
-          mainContainer.addChild(imbalance);
+          markerGraphics.rect(markerX, y - cellHeight / 2, markerWidth, cellHeight - 1);
+          markerGraphics.fill({ color, alpha: 0.9 });
         }
 
         // Draw bid x ask text if there's enough space
@@ -203,28 +213,22 @@ export const FootprintChart: React.FC = () => {
       if (candle.unfinished_auction_top) {
         const topLevel = candle.levels[candle.levels.length - 1];
         const y = getPriceY(topLevel.price_level);
-        const marker = new PIXI.Graphics();
-        marker.rect(x, y - 2, candleWidth - padding * 2, 2);
-        marker.fill({ color: 0xf97316, alpha: 0.9 });
-        mainContainer.addChild(marker);
+        markerGraphics.rect(x, y - 2, candleWidth - padding * 2, 2);
+        markerGraphics.fill({ color: 0xf97316, alpha: 0.9 });
       }
 
       if (candle.unfinished_auction_bottom) {
         const bottomLevel = candle.levels[0];
         const y = getPriceY(bottomLevel.price_level);
-        const marker = new PIXI.Graphics();
-        marker.rect(x, y, candleWidth - padding * 2, 2);
-        marker.fill({ color: 0xf97316, alpha: 0.9 });
-        mainContainer.addChild(marker);
+        markerGraphics.rect(x, y, candleWidth - padding * 2, 2);
+        markerGraphics.fill({ color: 0xf97316, alpha: 0.9 });
       }
 
       if (candle.delta_divergence) {
         const high = candle.levels[candle.levels.length - 1];
         const y = getPriceY(high.price_level) - 10;
-        const divergence = new PIXI.Graphics();
-        divergence.circle(x + (candleWidth - padding * 2) / 2, y, 4);
-        divergence.fill({ color: 0xfacc15, alpha: 0.9 });
-        mainContainer.addChild(divergence);
+        markerGraphics.circle(x + (candleWidth - padding * 2) / 2, y, 4);
+        markerGraphics.fill({ color: 0xfacc15, alpha: 0.9 });
       }
     });
   };

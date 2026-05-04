@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -63,7 +64,7 @@ func main() {
 		}
 	}()
 
-	// Start producer pipeline: read from channel, publish to Redpanda
+	// Start producer pipeline: read from channel, publish to Redpanda with symbol-keyed partitioning
 	go func() {
 		count := 0
 		for {
@@ -71,7 +72,9 @@ func main() {
 			case <-ctx.Done():
 				return
 			case data := <-tickCh:
-				if err := prod.Publish(ctx, data); err != nil {
+				// Extract symbol for partition key — keeps per-symbol tick ordering
+				symbol := extractSymbol(data)
+				if err := prod.PublishKeyed(ctx, symbol, data); err != nil {
 					slog.Error("Failed to publish", "error", err)
 				}
 				count++
@@ -89,4 +92,16 @@ func main() {
 	slog.Info("Shutdown signal received", "signal", sig)
 	cancel()
 	slog.Info("Market Data Ingester stopped")
+}
+
+// extractSymbol does a lightweight JSON extraction of the "symbol" field
+// for use as a Kafka partition key. Falls back to "unknown" on failure.
+func extractSymbol(data []byte) string {
+	var partial struct {
+		Symbol string `json:"symbol"`
+	}
+	if err := json.Unmarshal(data, &partial); err == nil && partial.Symbol != "" {
+		return partial.Symbol
+	}
+	return "unknown"
 }

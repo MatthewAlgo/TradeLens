@@ -51,19 +51,24 @@ export function useWebSocket() {
   const subscribe = useCallback((sym: string, intv: string) => {
     if (ws.current?.readyState !== WebSocket.OPEN) return;
     
-    // Subscribe to new channels
-    ws.current.send(JSON.stringify({ action: 'subscribe', channel: `candles:${sym}:${intv}` }));
-    ws.current.send(JSON.stringify({ action: 'subscribe', channel: `footprints:${sym}:${intv}` }));
-    ws.current.send(JSON.stringify({ action: 'subscribe', channel: `ticks:${sym}` }));
-    ws.current.send(JSON.stringify({ action: 'subscribe', channel: `orders` }));
+    const channels = [
+      `candles:${sym}:${intv}`,
+      `footprints:${sym}:${intv}`,
+      `ticks:${sym}`,
+      `orders`
+    ];
+    ws.current.send(JSON.stringify({ action: 'subscribe', channels }));
   }, []);
   
   const unsubscribe = useCallback((sym: string, intv: string) => {
     if (ws.current?.readyState !== WebSocket.OPEN) return;
     
-    ws.current.send(JSON.stringify({ action: 'unsubscribe', channel: `candles:${sym}:${intv}` }));
-    ws.current.send(JSON.stringify({ action: 'unsubscribe', channel: `footprints:${sym}:${intv}` }));
-    ws.current.send(JSON.stringify({ action: 'unsubscribe', channel: `ticks:${sym}` }));
+    const channels = [
+      `candles:${sym}:${intv}`,
+      `footprints:${sym}:${intv}`,
+      `ticks:${sym}`
+    ];
+    ws.current.send(JSON.stringify({ action: 'unsubscribe', channels }));
   }, []);
   
   useEffect(() => {

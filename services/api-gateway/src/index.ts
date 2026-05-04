@@ -200,14 +200,14 @@ wss.on('connection', (ws) => {
     if (!msg || !client) return;
 
     if (msg.action === 'subscribe') {
-      client.channels.add(msg.channel);
-      ws.send(JSON.stringify({ type: 'subscribed', channel: msg.channel }));
-      console.log(`[WS] ${clientId} subscribed to ${msg.channel}`);
+      msg.channels.forEach((c) => client.channels.add(c));
+      ws.send(JSON.stringify({ type: 'subscribed', channels: msg.channels }));
+      console.log(`[WS] ${clientId} subscribed to ${msg.channels.join(', ')}`);
     }
 
     if (msg.action === 'unsubscribe') {
-      client.channels.delete(msg.channel);
-      ws.send(JSON.stringify({ type: 'unsubscribed', channel: msg.channel }));
+      msg.channels.forEach((c) => client.channels.delete(c));
+      ws.send(JSON.stringify({ type: 'unsubscribed', channels: msg.channels }));
     }
   });
 
