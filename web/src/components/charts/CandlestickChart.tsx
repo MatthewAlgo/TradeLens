@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
-import type { ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
+import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import type { ISeriesApi, CandlestickData, Time, LineData } from 'lightweight-charts';
 import { useMarketStore } from '../../stores/marketStore';
 
 export const CandlestickChart: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const smaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const { candles, interval, setInterval } = useMarketStore();
 
   useEffect(() => {
@@ -46,8 +47,18 @@ export const CandlestickChart: React.FC = () => {
         wickDownColor: '#ef4444',
       });
 
+      // @ts-ignore
+      const smaSeries = chart.addSeries(LineSeries, {
+        color: '#6366f1',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+
       chartRef.current = chart;
       seriesRef.current = series;
+      smaSeriesRef.current = smaSeries;
 
       const handleResize = () => {
         if (chartContainerRef.current) {
@@ -93,6 +104,24 @@ export const CandlestickChart: React.FC = () => {
       const uniqueData = Array.from(uniqueMap.values());
 
       seriesRef.current.setData(uniqueData);
+
+      // Map SMA data
+      if (smaSeriesRef.current) {
+        const smaData: LineData<Time>[] = candles
+          .filter(c => c && c.time && c.indicators && c.indicators['SMA_20'] != null)
+          .map(c => ({
+            time: Math.floor(new Date(c.time).getTime() / 1000) as Time,
+            value: parseFloat(String(c.indicators!['SMA_20'])) || 0,
+          }))
+          .sort((a, b) => (a.time as number) - (b.time as number));
+
+        // Dedup SMA data
+        const uniqueSmaMap = new Map();
+        smaData.forEach(d => uniqueSmaMap.set(d.time, d));
+        const uniqueSmaData = Array.from(uniqueSmaMap.values());
+        
+        smaSeriesRef.current.setData(uniqueSmaData);
+      }
     } catch (err: any) {
       console.error("CandlestickChart data error:", err.message, err.stack);
     }

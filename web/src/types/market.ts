@@ -17,6 +17,7 @@ export interface OHLCV {
   close: number;
   volume: number;
   trade_count?: number;
+  indicators?: Record<string, number>;
 }
 
 export interface FootprintLevel {
