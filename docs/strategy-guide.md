@@ -32,6 +32,24 @@ class ExampleStrategy:
         return None
 ```
 
+## Using the Indicator Library
+
+Vectorized technical indicators are available in `app.engine.indicators`:
+
+```python
+from app.engine.indicators import Indicators
+
+# In your strategy
+sma = Indicators.sma(self.price_series, window=20)
+rsi = Indicators.rsi(self.price_series, window=14)
+```
+
+## Security & Sandboxing
+
+All strategies are subjected to **static code analysis** before execution.
+- **Allowed Imports**: `math`, `datetime`, `pandas`, `numpy`, `app.engine.*`.
+- **Forbidden**: `os`, `sys`, `subprocess`, `socket`, `requests`, and unsafe built-ins like `eval` or `exec`.
+
 ## Running a Backtest
 
 ```bash

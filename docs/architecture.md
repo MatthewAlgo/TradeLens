@@ -20,8 +20,9 @@
 
 1. Exchange ticks enter through `market-data-ingester`.
 2. `raw_ticks` are consumed by `aggregator` and `oms`.
-3. Aggregated outputs are persisted and re-published as `candles`/`footprints`.
-4. API Gateway forwards historical REST queries and streams live channel updates to the UI.
+3. `aggregator` computes real-time indicators (SMA, EMA, RSI) and publishes enriched `candles`.
+4. `oms` monitors `raw_ticks` for **Trailing Stop** triggers and updates active orders.
+5. API Gateway forwards historical REST queries and streams live channel updates to the UI.
 
 ## MVP Non-Goals
 

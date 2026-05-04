@@ -50,11 +50,12 @@ graph TB
 
 ## MVP Scope
 
-- End-to-end local data pipeline: Mock Exchange -> Ingester -> Redpanda -> Aggregator -> TimescaleDB.
-- Paper trading OMS (market, limit, stop-loss, take-profit).
-- Backtesting service with event-driven execution loop.
-- API Gateway (REST + WebSocket fan-out).
-- React frontend with candlestick and footprint chart rendering.
+- **End-to-end local data pipeline**: Mock Exchange -> Ingester -> Redpanda -> Aggregator -> TimescaleDB.
+- **Advanced OMS Engine**: Supports Market, Limit, Stop-Loss, Take-Profit, and specialized orders: **FOK**, **IOC**, **Post-Only**, and **Trailing Stops** (real-time tracking).
+- **Technical Indicator Library**: Real-time Go-based indicators (`SMA`, `EMA`, `RSI`, `BBands`) and vectorized Python counterparts.
+- **Secure Strategy Sandboxing**: Python `StrategyLoader` with static code analysis for safe dynamic strategy loading.
+- **High-Performance UI**: React frontend with batched WebGL footprint rendering and indicator overlays.
+- **Resilient DevOps**: Health-monitored microservices with automated startup sequencing.
 
 ## Architectural Decisions
 

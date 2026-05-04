@@ -15,9 +15,9 @@ When you are assigned a task on TradeLens, strictly adhere to the guidelines est
 
 - `mock-exchange`: Generates synthetic crypto trades. Written in Python. Use for local isolated development.
 - `market-data-ingester`: Go service. Normalizes exchange WS JSON into Protobuf and publishes to Redpanda.
-- `aggregator`: Go service. Subscribes to raw ticks from Redpanda, aggregates them into OHLCV and Footprint clusters, writes to TimescaleDB.
-- `oms`: Go service. Order Management System that handles paper trading logic and portfolio state.
-- `backtester`: Python FastAPI service. Runs event-driven backtests over historical TimescaleDB data.
+- `aggregator`: Go service. Subscribes to raw ticks from Redpanda, aggregates them into OHLCV and Footprint clusters, computes **technical indicators** in real-time, and writes to TimescaleDB.
+- `oms`: Go service. Order Management System that handles advanced matching logic, Trailing Stops, and publishes `order_events` to Redpanda.
+- `backtester`: Python FastAPI service. Runs event-driven backtests over historical data. Uses `loader.py` for **secure static analysis** of user strategies.
 - `api-gateway`: Node.js/TypeScript service. Central entrypoint for frontend. Handles REST routing and WebSocket multiplexing.
 - `web`: React/Vite/TS frontend. Consumes Gateway API.
 
