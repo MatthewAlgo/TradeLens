@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/indicators"
 	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/producer"
 	"github.com/MatthewAlgo/TradeLens/services/aggregator/internal/writer"
 )
@@ -70,8 +71,9 @@ type CandleMessage struct {
 	High       float64 `json:"high"`
 	Low        float64 `json:"low"`
 	Close      float64 `json:"close"`
-	Volume     float64 `json:"volume"`
-	TradeCount int     `json:"trade_count"`
+	Volume     float64            `json:"volume"`
+	TradeCount int                `json:"trade_count"`
+	Indicators map[string]float64 `json:"indicators,omitempty"`
 }
 
 // FootprintLevelMessage is a single price level in a footprint candle.
@@ -100,6 +102,7 @@ type SymbolEngine struct {
 	symbol     string
 	candles    map[string]*Candle          // key: "1m", "5m"
 	footprints map[string]*FootprintCandle // key: "1m", "5m"
+	indicators map[string]map[string]indicators.Indicator // key: interval -> indicatorName -> Indicator
 	engine     *Engine                     // reference back to main engine for shared config/writers
 }
 
@@ -149,7 +152,17 @@ func (e *Engine) getOrCreateSymbolEngine(symbol string) *SymbolEngine {
 		symbol:     symbol,
 		candles:    make(map[string]*Candle),
 		footprints: make(map[string]*FootprintCandle),
+		indicators: make(map[string]map[string]indicators.Indicator),
 		engine:     e,
+	}
+
+	// Initialize indicators for each interval
+	for _, interval := range e.intervals {
+		se.indicators[interval] = map[string]indicators.Indicator{
+			"SMA_20": indicators.NewSMA(20),
+			"EMA_20": indicators.NewEMA(20),
+			"RSI_14": indicators.NewRSI(14),
+		}
 	}
 	e.symbols[symbol] = se
 	return se
@@ -196,7 +209,7 @@ func (se *SymbolEngine) updateCandle(tick NormalizedTick, tickTime time.Time, in
 	// Check if we need to close the current candle and start a new one
 	if exists && !candle.OpenTime.Equal(candleOpen) {
 		// Close the old candle
-		se.engine.flushCandle(candle)
+		se.flushCandle(candle)
 		exists = false
 	}
 
@@ -226,6 +239,13 @@ func (se *SymbolEngine) updateCandle(tick NormalizedTick, tickTime time.Time, in
 	candle.Close = tick.Price
 	candle.Volume += tick.Quantity
 	candle.TradeCount++
+
+	// Update indicators on each tick (for real-time value)
+	if indMap, ok := se.indicators[interval]; ok {
+		for _, ind := range indMap {
+			ind.Update(tick.Price)
+		}
+	}
 }
 
 func (se *SymbolEngine) updateFootprint(tick NormalizedTick, tickTime time.Time, interval string) {
@@ -278,17 +298,26 @@ func (se *SymbolEngine) updateFootprint(tick NormalizedTick, tickTime time.Time,
 	}
 }
 
-func (e *Engine) flushCandle(c *Candle) {
-	// 1. Write to TimescaleDB
-	if e.writer != nil {
-		if err := e.writer.WriteCandle(c.OpenTime, c.Symbol, c.Interval,
-			c.Open, c.High, c.Low, c.Close, c.Volume, c.TradeCount); err != nil {
-			slog.Error("Failed to write candle", "error", err, "symbol", c.Symbol, "interval", c.Interval)
+func (se *SymbolEngine) flushCandle(c *Candle) {
+	// Gather current indicator values
+	indicatorValues := make(map[string]float64)
+	if indMap, ok := se.indicators[c.Interval]; ok {
+		for name, ind := range indMap {
+			indicatorValues[name] = ind.Value()
 		}
 	}
 
+	// 1. Write to TimescaleDB
+	if se.engine.writer != nil {
+		if err := se.engine.writer.WriteCandle(c.OpenTime, c.Symbol, c.Interval,
+			c.Open, c.High, c.Low, c.Close, c.Volume, c.TradeCount); err != nil {
+			slog.Error("Failed to write candle", "error", err, "symbol", c.Symbol, "interval", c.Interval)
+		}
+		// TODO: Write indicator values to a separate table if needed
+	}
+
 	// 2. Publish to Kafka so the api-gateway WS bridge can relay to clients
-	if e.candleProducer != nil {
+	if se.engine.candleProducer != nil {
 		msg := CandleMessage{
 			Time:       c.OpenTime.Format(time.RFC3339),
 			Symbol:     c.Symbol,
@@ -299,17 +328,22 @@ func (e *Engine) flushCandle(c *Candle) {
 			Close:      c.Close,
 			Volume:     c.Volume,
 			TradeCount: c.TradeCount,
+			Indicators: indicatorValues,
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
 			slog.Error("Failed to marshal candle for Kafka", "error", err)
 		} else {
 			key := fmt.Sprintf("%s:%s", c.Symbol, c.Interval)
-			if pubErr := e.candleProducer.PublishKeyed(context.Background(), key, data); pubErr != nil {
+			if pubErr := se.engine.candleProducer.PublishKeyed(context.Background(), key, data); pubErr != nil {
 				slog.Error("Failed to publish candle to Kafka", "error", pubErr, "key", key)
 			}
 		}
 	}
+}
+
+func (e *Engine) flushCandle(c *Candle) {
+	// This method is now legacy, using SymbolEngine.flushCandle instead
 }
 
 func (e *Engine) flushFootprint(fp *FootprintCandle) {
@@ -377,7 +411,7 @@ func (e *Engine) FlushAll() {
 	for _, se := range e.symbols {
 		se.mu.Lock()
 		for _, c := range se.candles {
-			e.flushCandle(c)
+			se.flushCandle(c)
 		}
 		for _, fp := range se.footprints {
 			e.flushFootprint(fp)

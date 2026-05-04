@@ -131,24 +131,11 @@ class BacktestExecutor:
 
     @classmethod
     def _load_strategy(cls, name: str, params: dict):
-        """Load a strategy by name from the built-in strategies directory."""
+        """Load a strategy securely by name from the strategies directory."""
+        from app.engine.loader import StrategyLoader
+        
         strategies_dir = os.path.join(os.path.dirname(__file__), "..", "strategies")
         strategy_file = os.path.join(strategies_dir, f"{name}.py")
 
-        if not os.path.exists(strategy_file):
-            raise FileNotFoundError(f"Strategy not found: {name}")
-
-        spec = importlib.util.spec_from_file_location(name, strategy_file)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        # Look for a class that has on_data and on_fill methods
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name)
-            if (isinstance(attr, type) and
-                hasattr(attr, "on_data") and
-                hasattr(attr, "on_fill") and
-                attr_name != "Strategy"):
-                return attr(**params)
-
-        raise ValueError(f"No valid strategy class found in {name}.py")
+        StrategyClass = StrategyLoader.load_strategy_from_file(strategy_file)
+        return StrategyClass(**params)
