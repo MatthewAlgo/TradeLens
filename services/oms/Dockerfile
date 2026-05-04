@@ -6,7 +6,7 @@ COPY services/oms/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /oms ./cmd/oms
 
 FROM alpine:3.20
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates wget
 COPY --from=builder /oms /usr/local/bin/oms
 EXPOSE 4001
 ENTRYPOINT ["oms"]
