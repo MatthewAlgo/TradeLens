@@ -6,6 +6,7 @@ COPY services/api-gateway/ .
 RUN npx tsc
 
 FROM node:20-alpine
+RUN apk --no-cache add wget
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
